@@ -1,0 +1,39 @@
+{
+  "name": "jsgff",
+  "version": "0.0.1",
+  "description": "JavaScript Generic File Format: base class to create any container-like file format.",
+  "main": "lib/JsGFF.js",
+  "directories": {
+    "test": "test"
+  },
+  "dependencies": {
+    "stream-kit": "^0.5.4"
+  },
+  "scripts": {
+    "test": "tea-time -R dot"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cronvel/jsgff.git"
+  },
+  "keywords": [
+    "container",
+    "file",
+    "format"
+  ],
+  "author": "Cédric Ronvel",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/cronvel/jsgff/issues"
+  },
+  "copyright": {
+    "title": "JsGFF",
+    "years": [
+      2024
+    ],
+    "owner": "Cédric Ronvel"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
