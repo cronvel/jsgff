@@ -16,6 +16,7 @@ build
 _build
 _templates
 _static
+out.*
 
 
 # gitignore / Node.gitignore #
