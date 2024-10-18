@@ -24,6 +24,7 @@ async function read() {
 	var fileData = jsGFF.createFileData() ;
     await fileData.load( sourceFile ) ;
     console.log( fileData ) ;
+    console.log( fileData.contents ) ;
 }
 
 read() ;

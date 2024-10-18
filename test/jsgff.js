@@ -24,6 +24,8 @@
 	SOFTWARE.
 */
 
+"use strict" ;
+
 /* global expect, describe, it, before, after */
 
 
@@ -32,8 +34,39 @@ const JsGFF = require( '..' ) ;
 
 
 
-describe( "..." , () => {
+describe( "Parse/stringify meta (headers, etc)" , () => {
 	
-	it( "..." ) ;
+	it( "should stringify and parse an empty object" , () => {
+		var object , str , parsedObject ;
+		
+		object = {} ;
+		str = JsGFF.stringifyMeta( object ) ;
+		expect( str ).to.be( '' ) ;
+		parsedObject = JsGFF.parseMeta( str ) ;
+		console.log( "parsedObject:" , parsedObject ) ;
+		expect( object ).to.equal( parsedObject ) ;
+	} ) ;
+
+	it( "should stringify and parse simple object" , () => {
+		var object , str , parsedObject ;
+		
+		object = { width: 640 , height: 480 , title: "A beautiful picture" } ;
+		str = JsGFF.stringifyMeta( object ) ;
+		expect( str ).to.be( 'width:640\nheight:480\ntitle:"A beautiful picture"\n' ) ;
+		parsedObject = JsGFF.parseMeta( str ) ;
+		console.log( "parsedObject:" , parsedObject ) ;
+		expect( object ).to.equal( parsedObject ) ;
+	} ) ;
+
+	it( "should stringify and parse nested objects" , () => {
+		var object , str , parsedObject ;
+		
+		object = { width: 640 , height: 480 , sub: {a:1,b:2,array:[1,2,3]} } ;
+		str = JsGFF.stringifyMeta( object ) ;
+		expect( str ).to.be( 'width:640\nheight:480\nsub:{a:1,b:2,array:[1,2,3]}\n' ) ;
+		parsedObject = JsGFF.parseMeta( str ) ;
+		console.log( "parsedObject:" , parsedObject ) ;
+		expect( object ).to.equal( parsedObject ) ;
+	} ) ;
 } ) ;
 

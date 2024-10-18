@@ -21,8 +21,13 @@ async function write() {
 		debug: true
 	} ) ;
 	
-	var fileData = jsGFF.createFileData() ;
-	fileData.addContent( 'metadata' , "test test test" ) ;
+	var fileData = jsGFF.createFileData( {
+		title: "Some great title" ,
+		author: "Bob"
+	} ) ;
+	fileData.addContent( 'txt' , "test test test" ) ;
+	fileData.addContent( 'meta' , { description: "Photo of Paris at night" , date: new Date() } ) ;
+	fileData.addContent( 'data' , Buffer.from( [ 0x43 , 0x10 , 0x56 , 0xaf ] ) ) ;
 	await fileData.save( outputFile ) ;
 }
 
