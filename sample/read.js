@@ -22,9 +22,17 @@ async function read() {
 	} ) ;
 
 	var fileData = jsGFF.createFileData() ;
-    await fileData.load( sourceFile ) ;
-    console.log( fileData ) ;
-    console.log( fileData.contents ) ;
+	await fileData.load( sourceFile ) ;
+	console.log( fileData ) ;
+	
+	for ( let contentType of Object.keys( fileData.contents ) ) {
+		for ( let { content , headers , flags } of fileData.contents[ contentType ] ) {
+			console.log( "\n>>> New content of type:" , contentType ) ;
+			console.log( "Headers:" , headers ) ;
+			console.log( "Flags:" , flags ) ;
+			console.log( "Content:" , content ) ;
+		}
+	}
 }
 
 read() ;

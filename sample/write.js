@@ -25,9 +25,15 @@ async function write() {
 		title: "Some great title" ,
 		author: "Bob"
 	} ) ;
+	fileData.setMetadata( { date: new Date() } ) ;
+
 	fileData.addContent( 'txt' , "test test test" ) ;
 	fileData.addContent( 'meta' , { description: "Photo of Paris at night" , date: new Date() } ) ;
 	fileData.addContent( 'data' , Buffer.from( [ 0x43 , 0x10 , 0x56 , 0xaf ] ) ) ;
+	fileData.addContent( 'image' , Buffer.from( [ 0x78 , 0x11 , 0xa6 , 0xfe ] ) , {
+		width: 60 ,
+		height: 40
+	} ) ;
 	await fileData.save( outputFile ) ;
 }
 
