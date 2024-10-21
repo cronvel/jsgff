@@ -1,5 +1,5 @@
 /*
-	PixPal
+	JsGFF
 
 	Copyright (c) 2024 Cédric Ronvel
 
