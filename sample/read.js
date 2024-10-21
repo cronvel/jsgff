@@ -42,7 +42,8 @@ var sourceFile = process.argv[ 2 ] ;
 async function read() {
 	var jsGFF = new JsGFF( {
 		formatCodeName: 'test' ,
-		debug: true
+		debug: true ,
+		mandatoryContents: [ 'image' ]
 	} ) ;
 
 	var fileData = jsGFF.createFileData() ;

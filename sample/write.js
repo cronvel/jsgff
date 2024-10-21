@@ -42,7 +42,18 @@ var outputFile = process.argv[ 2 ] ;
 async function write() {
 	var jsGFF = new JsGFF( {
 		formatCodeName: 'test' ,
-		debug: true
+		debug: true ,
+		mandatoryContents: [ 'image' ] ,
+
+		// TODO: headers definitions
+		headersDef: {
+			title: [ true , 'string' ] ,
+			size: [ false , 'object' , {
+				width: [ true , 'number' ] ,
+				height: [ true , 'number' ]
+			} ] ,
+			indexes: [ false , 'arrayOf' , 'number' ] ,
+		}
 	} ) ;
 	
 	var fileData = jsGFF.createFileData( {
