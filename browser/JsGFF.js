@@ -47,6 +47,8 @@ function FileData( jsGFF , headers , metadata ) {
 	this.metadata = {} ;
 	this.contents = {} ;
 
+	this.debug = false ;
+
 	if ( headers ) { this.setHeaders( headers ) ; }
 	if ( metadata ) { this.setMetadata( metadata ) ; }
 }
@@ -129,6 +131,9 @@ FileData.COMPRESSION_DEFLATE = 4 ;
 
 
 FileData.prototype.encode = async function() {
+	// First, check that the file has all requirements
+	this.jsGFF.checkRequirements( this ) ;
+
 	var writableBuffer = new SequentialWriteBuffer() ;
 
 	// Write the magic numbers
@@ -148,7 +153,7 @@ FileData.prototype.encode = async function() {
 		for ( let { content , headers , flags } of contents ) {
 			let contentFormat = FileData.getContentFormat( content ) ;
 			if ( contentFormat < 0 ) { continue ; }
-			console.log( "contentType: '" + contentType + "' format: " , contentFormat ) ;
+			if ( this.debug ) { console.log( "contentType: '" + contentType + "' format: " , contentFormat ) ; }
 
 			let flagByte = contentFormat ;
 			if ( flags.deflate ) { flagByte += FileData.COMPRESSION_DEFLATE ; }
@@ -161,7 +166,7 @@ FileData.prototype.encode = async function() {
 			writableBuffer.writeNullTerminatedUtf8( stringifyMeta( headers ) ) ;
 
 			// Write the flags
-			console.log( "flagByte:" , flagByte ) ;
+			if ( this.debug ) { console.log( "flagByte:" , flagByte ) ; }
 			writableBuffer.writeUInt8( flagByte ) ;
 
 			// Write the size and the content
@@ -234,9 +239,6 @@ FileData.prototype.decode = async function( buffer ) {
 	if ( readableBuffer.readUInt8() !== 0x0a ) { throw new Error( "Corrupted JsGFF (missing pre-metadata '\\n')" ) ; }
 	this.metadata = parseMeta( readableBuffer.readNullTerminatedUtf8() ) ;
 
-	console.log( "ptr: 0x" + readableBuffer.ptr.toString( 16 ) ) ;
-
-
 	// Read all content chunks
 	while ( ! readableBuffer.ended ) {
 		// Read the type of content
@@ -245,11 +247,14 @@ FileData.prototype.decode = async function( buffer ) {
 		if ( contentType === '' ) {
 			// A null byte was received, this is the end of the content, and so the end of the file
 			if ( ! readableBuffer.ended ) { throw new Error( "Corrupted JsGFF (expecting end of file)" ) ; }
-			console.log( "End of file" ) ;
+			if ( this.debug ) { console.log( "End of file" ) ; }
+
+			// Finally, check that the file has all requirements
+			this.jsGFF.checkRequirements( this ) ;
 			return ;
 		}
 
-		console.log( "contentType: '" + contentType + "'" , contentType.length ) ;
+		if ( this.debug ) { console.log( "contentType: '" + contentType + "'" , contentType.length ) ; }
 
 		// Read the content headers
 		if ( readableBuffer.readUInt8() !== 0x0a ) { throw new Error( "Corrupted JsGFF (missing pre-content-headers '\\n')" ) ; }
@@ -257,11 +262,11 @@ FileData.prototype.decode = async function( buffer ) {
 
 		// Read the flags
 		let flagByte = readableBuffer.readUInt8() ;
-		console.log( "flagByte:" , flagByte ) ;
+		if ( this.debug ) { console.log( "flagByte:" , flagByte ) ; }
 		let flags = {} ;
 		if ( flagByte & FileData.COMPRESSION_DEFLATE ) { flags.deflate = true ; }
 		let contentFormat = flagByte & 0b11 ;
-		console.log( "contentFormat:" , contentFormat ) ;
+		if ( this.debug ) { console.log( "contentFormat:" , contentFormat ) ; }
 
 		// Read the size and the content
 		let content ;
@@ -306,6 +311,8 @@ FileData.prototype.decode = async function( buffer ) {
 		if ( ! this.contents[ contentType ] ) { this.contents[ contentType ] = [] ; }
 		this.contents[ contentType ].push( { content , headers , flags } ) ;
 	}
+
+	throw new Error( "Corrupted JsGFF (unexpected end of file)" ) ;
 } ;
 
 
@@ -421,19 +428,23 @@ async function deflate( buffer ) {
 
 
 /*
-	Should contains the format definition (not done ATM).
+	This is the format definition.
 
-	It should include:
+	It includes:
 
-	* supported headers and their types (only: boolean, number, string, object and array)
-	* which headers are mandatory
-	* supported contentType and which content are mandatory
-	* supported headers for each contentType and which headers are mandatory
+	* the format magic number
+	* supported headers and their types (only: boolean, number, string, object and array), and which header is mandatory
+	* supported contentType and which content is mandatory
+	* supported headers for each contentType and which header is mandatory
 */
 function JsGFF( params = {} ) {
 	this.formatCodeName = params.formatCodeName || 'generic' ;
 	this.magicNumbers = Buffer.from( 'JSGFF/' + this.formatCodeName + '\n' , 'latin1' ) ;
-	this.debug = !! params.debug ;
+
+	// Enforcement
+	this.mandatoryContents = Array.isArray( params.mandatoryContents ) ? new Set( params.mandatoryContents ) : new Set() ;
+	this.headersDef = params.headersDef || null ;
+	this.contentHeadersDef = params.contentHeadersDef || null ;
 }
 
 module.exports = JsGFF ;
@@ -447,6 +458,105 @@ JsGFF.parseMeta = require( './parseMeta.js' ) ;
 
 JsGFF.prototype.createFileData = function( headers = {} , metadata = {} ) {
 	return new FileData( this , headers , metadata ) ;
+} ;
+
+
+
+JsGFF.prototype.checkRequirements = function( fileData ) {
+	// First check mandatory contents
+	for ( let contentType of this.mandatoryContents ) {
+		if ( ! fileData.contents[ contentType ] || ! fileData.contents[ contentType ].length ) {
+			throw new Error( "Corrupted " + this.formatCodeName + " file, missing content of type: " + contentType ) ;
+		}
+	}
+
+	if ( this.headersDef ) {
+		this.checkHeaders( fileData.headers , this.headersDef , '[file]' ) ;
+	}
+
+	if ( this.contentHeadersDef ) {
+		for ( let contentType of Object.keys( this.contentHeadersDef ) ) {
+			if ( fileData.contents[ contentType ] && fileData.contents[ contentType ].length ) {
+				let index = 0 ;
+
+				for ( let { headers } of fileData.contents[ contentType ] ) {
+					this.checkHeaders( headers , this.contentHeadersDef[ contentType ] , '<' + contentType + '>' + '[' + index + ']' ) ;
+					index ++ ;
+				}
+			}
+		}
+	}
+} ;
+
+
+
+JsGFF.prototype.checkHeaders = function( headers , def , prefix ) {
+	for ( let key of Object.keys( def ) ) {
+		this.checkHeaderValue( headers[ key ] , def[ key ] , prefix + '.' + key ) ;
+	}
+} ;
+
+
+
+JsGFF.prototype.checkHeaderValue = function( headerValue , def , prefix ) {
+	var [ mandatory , type , ofDef ] = def ;
+
+	if ( headerValue === undefined ) {
+		if ( mandatory ) { throw new Error( "Corrupted " + this.formatCodeName + " file, missing mandatory header: " + prefix ) ; }
+		return ;
+	}
+
+	if ( headerValue === null ) {
+		if ( mandatory ) { throw new Error( "Corrupted " + this.formatCodeName + " file, mandatory header can't be null: " + prefix ) ; }
+		return ;
+	}
+
+	switch ( type )  {
+		case 'boolean' :
+			if ( typeof headerValue !== 'boolean' ) {
+				throw new Error( "Corrupted " + this.formatCodeName + " file, expecting a boolean for header: " + prefix ) ;
+			}
+
+			break ;
+		case 'number' :
+			if ( typeof headerValue !== 'number' || Number.isNaN( headerValue ) ) {
+				throw new Error( "Corrupted " + this.formatCodeName + " file, expecting a number for header: " + prefix ) ;
+			}
+
+			break ;
+		case 'integer' :
+			if ( typeof headerValue !== 'number' || ! Number.isSafeInteger( headerValue ) ) {
+				throw new Error( "Corrupted " + this.formatCodeName + " file, expecting an integer for header: " + prefix ) ;
+			}
+
+			break ;
+		case 'string' :
+			if ( typeof headerValue !== 'string' ) {
+				throw new Error( "Corrupted " + this.formatCodeName + " file, expecting a string for header: " + prefix ) ;
+			}
+
+			break ;
+		case 'array' :
+			if ( ! Array.isArray( headerValue ) ) {
+				throw new Error( "Corrupted " + this.formatCodeName + " file, expecting an array for header: " + prefix ) ;
+			}
+
+			for ( let i = 0 ; i < headerValue.length ; i ++ ) {
+				this.checkHeaderValue( headerValue[ i ] , ofDef , prefix + '.' + i ) ;
+			}
+
+			break ;
+		case 'object' :
+			if ( ! headerValue || typeof headerValue !== 'object' || Array.isArray( headerValue ) ) {
+				throw new Error( "Corrupted " + this.formatCodeName + " file, expecting an object for header: " + prefix ) ;
+			}
+
+			for ( let key of Object.keys( def ) ) {
+				this.checkHeaderValue( headerValue[ key ] , def[ key ] , prefix + '.' + key ) ;
+			}
+
+			break ;
+	}
 } ;
 
 
@@ -530,16 +640,17 @@ function parseValue( str , runtime ) {
 		runtime.i ++ ;
 		parseIdle( str , runtime ) ;
 		c = str.charCodeAt( runtime.i ) ;
-		if ( ( c >= 0x41 && c <= 0x5a ) || ( c >= 0x61 && c <= 0x7a ) ) {
+		if ( c >= 0x61 && c <= 0x7a ) {
 			runtime.i ++ ;
-			return parseLxonConstant( str , runtime , LXON_NEGATIVE_CONSTANTS ) ;
+			return parseConstant( str , runtime , NEGATIVE_CONSTANTS ) ;
 		}
 
 		if ( c >= 0x30 && c <= 0x39 ) {	// digit
 			return parseNegativeNumber( str , runtime ) ;
 		}
 
-		throw new SyntaxError( "Unexpected " + str[ runtime.i ] ) ;
+		// Anything else is considered as the false constant (single minus)
+		return false ;
 	}
 
 	if ( c >= 0x30 && c <= 0x39 ) {	// digit
@@ -557,9 +668,14 @@ function parseValue( str , runtime ) {
 			return parseString( str , runtime ) ;
 		case 0x5f :	// _
 			return parseDate( str , runtime ) ;
+		case 0x2a :	// *
+			return null ;
+		case 0x2b :	// +
+			return true ;
 		default :
-			if ( ( c >= 0x41 && c <= 0x5a ) || ( c >= 0x61 && c <= 0x7a ) ) {
-				return parseLxonConstant( str , runtime ) ;
+			// Constants are: [a-z]+   (single -/+/* was already detected earlier)
+			if ( c >= 0x61 && c <= 0x7a ) {
+				return parseConstant( str , runtime ) ;
 			}
 
 			throw new SyntaxError( "Unexpected " + str[ runtime.i - 1 ] ) ;
@@ -570,30 +686,29 @@ function parseValue( str , runtime ) {
 
 
 // Map.has() is way faster than (key in Object) (at least on Node.js v16)
-const LXON_CONSTANTS = new Map( [
-	[ 'null' , null ] ,
-	[ 'false' , false ] ,
-	[ 'true' , true ] ,
-	[ 'NaN' , NaN ] ,
-	[ 'nan' , NaN ] ,
-	[ 'Infinity' , Infinity ] ,
-	[ 'infinity' , Infinity ]
+const CONSTANTS = new Map( [
+	[ 'inf' , Infinity ] ,
+	[ '+inf' , Infinity ]
+
+	// useless, immediately detected at the first and only character:
+	//[ '*' , null ] ,
+	//[ '+' , true ] ,
+	//[ '-' , false ] ,
 ] ) ;
 
-const LXON_NEGATIVE_CONSTANTS = new Map( [
-	[ 'Infinity' , - Infinity ] ,
-	[ 'infinity' , - Infinity ]
+const NEGATIVE_CONSTANTS = new Map( [
+	[ 'inf' , - Infinity ]
 ] ) ;
 
-function parseLxonConstant( str , runtime , constants = LXON_CONSTANTS ) {
+function parseConstant( str , runtime , constants = CONSTANTS ) {
 	var c , id , j = runtime.i , l = str.length ;
 
 	for ( ; j < l ; j ++ ) {
 		c = str.charCodeAt( j ) ;
 
-		// Lxon constants are: [a-zA-Z]+
+		// Constants are: [a-z]+
 		// The first char is already parsed
-		if ( ! ( ( c >= 0x41 && c <= 0x5a ) || ( c >= 0x61 && c <= 0x7a ) ) ) {
+		if ( ! ( c >= 0x61 && c <= 0x7a ) ) {
 			break ;
 		}
 	}
@@ -746,13 +861,13 @@ function parseUnicode( str , runtime ) {
 
 
 
-function parseLxonUnquotedKey( str , runtime ) {
+function parseUnquotedKey( str , runtime ) {
 	var c , v , j = runtime.i + 1 , l = str.length ;
 
 	for ( ; j < l ; j ++ ) {
 		c = str.charCodeAt( j ) ;
 
-		// Lxon keys are: [@a-zA-Z0-9_$-]+
+		// Keys are: [@a-zA-Z0-9_$-]+
 		// The first char is already parsed
 		if ( ! ( ( c >= 0x40 && c <= 0x5a ) || ( c >= 0x61 && c <= 0x7a ) || ( c >= 0x30 && c <= 0x39 ) || c === 0x5f || c === 0x24 || c === 0x2d ) ) {
 			v = str.slice( runtime.i , j ) ;
@@ -891,9 +1006,9 @@ function parseTopLevelObject( str , runtime ) {
 
 
 function parseKey( str , runtime , c ) {
-	// Lxon keys are: [@a-zA-Z0-9_$-]+
+	// Keys are: [@a-zA-Z0-9_$-]+
 	if ( ( c >= 0x40 && c <= 0x5a ) || ( c >= 0x61 && c <= 0x7a ) || ( c >= 0x30 && c <= 0x39 ) || c === 0x5f || c === 0x24 || c === 0x2d ) {
-		return parseLxonUnquotedKey( str , runtime ) ;
+		return parseUnquotedKey( str , runtime ) ;
 	}
 
 	if ( c !== 0x22 ) { throw new Error( "Unexpected " + str[ runtime.i ] ) ; }
@@ -955,7 +1070,7 @@ module.exports = stringify ;
 
 function stringifyAnyType( v , runtime ) {
 	if ( v === undefined || v === null ) {
-		runtime.str += "null" ;
+		runtime.str += "*" ;
 		return ;
 	}
 
@@ -971,7 +1086,7 @@ function stringifyAnyType( v , runtime ) {
 			if ( v instanceof Date ) { return stringifyDate( v , runtime ) ; }
 			return stringifyObject( v , runtime ) ;
 		default :
-			runtime.str += "null" ;
+			runtime.str += "*" ;
 			return ;
 	}
 }
@@ -979,15 +1094,15 @@ function stringifyAnyType( v , runtime ) {
 
 
 function stringifyBoolean( v , runtime ) {
-	runtime.str += ( v ? "true" : "false" ) ;
+	runtime.str += ( v ? "+" : "-" ) ;
 }
 
 
 
 function stringifyNumber( v , runtime ) {
-	if ( Number.isNaN( v ) ) { runtime.str += "NaN" ; }
-	else if ( v === Infinity ) { runtime.str += "Infinity" ; }
-	else if ( v === - Infinity ) { runtime.str += "-Infinity" ; }
+	if ( Number.isNaN( v ) ) { runtime.str += "nan" ; }
+	else if ( v === Infinity ) { runtime.str += "inf" ; }
+	else if ( v === - Infinity ) { runtime.str += "-inf" ; }
 	else { runtime.str += v ; }
 }
 
@@ -1025,8 +1140,7 @@ function stringifyString( v , runtime ) {
 
 
 
-// lxonUnquotedKeys
-function stringifyLxonUnquotedKey( v , runtime ) {
+function stringifyUnquotedKey( v , runtime ) {
 	var i = 0 , l = v.length , c , hasLetter = false ;
 
 	// Always prefer quotes for keys that are too big
@@ -1035,7 +1149,7 @@ function stringifyLxonUnquotedKey( v , runtime ) {
 	for ( ; i < l ; i ++ ) {
 		c = v.charCodeAt( i ) ;
 
-		// Lxon keys are: [@a-zA-Z0-9_$-]+
+		// Keys are: [@a-zA-Z0-9_$-]+
 		// But we will quote keys that have only numbers and '-' to avoid human reading confusions
 		if ( ( c >= 0x40 && c <= 0x5a ) || ( c >= 0x61 && c <= 0x7a ) || c === 0x5f || c === 0x24 ) {
 			// Character range: [@a-zA-Z_$]
@@ -1158,11 +1272,13 @@ function stringifyObject( v , runtime ) {
 	runtime.str += '{' ;
 
 	for ( let i = 0 ; i < keys.length ; i ++ ) {
-		if ( v[ keys[ i ] ] !== undefined ) {
+		let value = v[ keys[ i ] ] ;
+
+		if ( value !== undefined && ! Number.isNaN( value ) ) {
 			if ( hasValue ) { runtime.str += ',' ; }
-			stringifyLxonUnquotedKey( keys[ i ] , runtime ) ;
+			stringifyUnquotedKey( keys[ i ] , runtime ) ;
 			runtime.str += ':' ;
-			stringifyAnyType( v[ keys[ i ] ] , runtime ) ;
+			stringifyAnyType( value , runtime ) ;
 			hasValue = true ;
 		}
 	}
@@ -1178,10 +1294,12 @@ function stringifyTopLevelObject( v , runtime ) {
 	if ( ! keys.length ) { return ; }
 
 	for ( let i = 0 ; i < keys.length ; i ++ ) {
-		if ( v[ keys[ i ] ] !== undefined ) {
-			stringifyLxonUnquotedKey( keys[ i ] , runtime ) ;
+		let value = v[ keys[ i ] ] ;
+
+		if ( value !== undefined && ! Number.isNaN( value ) ) {
+			stringifyUnquotedKey( keys[ i ] , runtime ) ;
 			runtime.str += ':' ;
-			stringifyAnyType( v[ keys[ i ] ] , runtime ) ;
+			stringifyAnyType( value , runtime ) ;
 			runtime.str += '\n' ;
 		}
 	}

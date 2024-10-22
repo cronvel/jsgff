@@ -24,9 +24,11 @@
 	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 	SOFTWARE.
 */
+
 "use strict" ;
 
 const JsGFF = require( '..' ) ;
+const format = require( './format.js' ) ;
 
 
 
@@ -40,13 +42,7 @@ if ( process.argv.length < 3 ) {
 var sourceFile = process.argv[ 2 ] ;
 
 async function read() {
-	var jsGFF = new JsGFF( {
-		formatCodeName: 'test' ,
-		debug: true ,
-		mandatoryContents: [ 'image' ]
-	} ) ;
-
-	var fileData = jsGFF.createFileData() ;
+	var fileData = format.createFileData() ;
 	await fileData.load( sourceFile ) ;
 	console.log( fileData ) ;
 	

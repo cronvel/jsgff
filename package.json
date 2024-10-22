@@ -1,6 +1,6 @@
 {
   "name": "jsgff",
-  "version": "0.0.2",
+  "version": "0.1.0",
   "description": "JavaScript Generic File Format: base class to create any container-like file format.",
   "main": "lib/JsGFF.js",
   "directories": {
