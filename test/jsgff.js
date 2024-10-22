@@ -58,6 +58,40 @@ describe( "Parse/stringify meta (headers, etc)" , () => {
 		expect( object ).to.equal( parsedObject ) ;
 	} ) ;
 
+	it( "should stringify and parse constants" , () => {
+		var object , str , parsedObject ;
+
+		object = { a: true , b: false , c: null , d: Infinity , e: - Infinity } ;
+		str = JsGFF.stringifyMeta( object ) ;
+		expect( str ).to.be( 'a:+\nb:-\nc:*\nd:inf\ne:-inf\n' ) ;
+		parsedObject = JsGFF.parseMeta( str ) ;
+		console.log( "parsedObject:" , parsedObject ) ;
+		expect( object ).to.equal( parsedObject ) ;
+
+		object = { sub: { a: true , b: false , c: null , d: Infinity , e: - Infinity } } ;
+		str = JsGFF.stringifyMeta( object ) ;
+		expect( str ).to.be( 'sub:{a:+,b:-,c:*,d:inf,e:-inf}\n' ) ;
+		parsedObject = JsGFF.parseMeta( str ) ;
+		console.log( "parsedObject:" , parsedObject ) ;
+		expect( object ).to.equal( parsedObject ) ;
+		
+		// Nan is always removed
+		object = { n1: NaN , a: true , b: false , c: null , n2: NaN , d: Infinity , e: - Infinity , n3: NaN } ;
+		str = JsGFF.stringifyMeta( object ) ;
+		expect( str ).to.be( 'a:+\nb:-\nc:*\nd:inf\ne:-inf\n' ) ;
+	} ) ;
+
+	it( "should stringify and parse date" , () => {
+		var object , str , parsedObject ;
+		
+		object = { date: new Date( '2024-10-22T08:55:22.000Z' ) } ;
+		str = JsGFF.stringifyMeta( object ) ;
+		expect( str ).to.be( 'date:_"2024-10-22T08:55:22.000Z"\n' ) ;
+		parsedObject = JsGFF.parseMeta( str ) ;
+		console.log( "parsedObject:" , parsedObject ) ;
+		expect( object ).to.equal( parsedObject ) ;
+	} ) ;
+
 	it( "should stringify and parse nested objects" , () => {
 		var object , str , parsedObject ;
 		
